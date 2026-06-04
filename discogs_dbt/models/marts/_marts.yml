@@ -1,0 +1,44 @@
+version: 2
+models:
+  - name: fct_release
+    description: "Gold fact. Grain: one row per release. Measures + FKs to dimensions."
+    columns:
+      - name: release_key
+        description: "Surrogate primary key (hash of release_id)."
+        tests: [unique, not_null]
+      - name: artist_key
+        description: "FK to dim_artist."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_artist')
+                field: artist_key
+      - name: rating_average
+        description: "NON-additive measure: never SUM across rows."
+      - name: want_to_have_ratio
+        description: "Headline measure: community want / have. >1 means demand exceeds ownership."
+  - name: dim_artist
+    description: "Conformed artist dimension (primary release artist)."
+    columns:
+      - name: artist_key
+        tests: [unique, not_null]
+  - name: dim_label
+    description: "Conformed label dimension."
+    columns:
+      - name: label_key
+        tests: [unique, not_null]
+  - name: dim_format
+    description: "Format dimension with physical/digital classification."
+    columns:
+      - name: format_key
+        tests: [unique, not_null]
+  - name: dim_date
+    description: "Year-grain time dimension (Discogs dates are often partial)."
+    columns:
+      - name: year_key
+        tests: [unique, not_null]
+  - name: dim_genre
+    description: "Conformed genre dimension, sourced from the release-genre bridge."
+    columns:
+      - name: genre_key
+        tests: [unique, not_null]

@@ -1,0 +1,13 @@
+name: 'discogs_dbt'
+version: '1.0.0'
+profile: 'discogs'
+model-paths: ["models"]
+
+models:
+  discogs_dbt:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table

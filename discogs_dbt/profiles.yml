@@ -1,0 +1,7 @@
+discogs:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: /Users/daniel/Desktop/pipeline/discogs.duckdb
+      schema: main

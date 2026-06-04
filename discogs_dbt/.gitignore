@@ -1,0 +1,6 @@
+# never commit these
+target/
+dbt_packages/
+logs/
+*.duckdb
+.env
