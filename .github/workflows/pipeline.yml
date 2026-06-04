@@ -1,0 +1,39 @@
+name: discogs-pipeline
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv duckdb dbt-duckdb
+
+      - name: Ingest from Discogs API
+        env:
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: python ingest_discogs.py
+
+      - name: Load raw data into DuckDB
+        run: python load_to_duckdb.py
+
+      - name: Run dbt build (transform + test)
+        working-directory: discogs_dbt
+        run: dbt build --profiles-dir .
+
+      - name: Save the warehouse as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: discogs-warehouse
+          path: discogs.duckdb

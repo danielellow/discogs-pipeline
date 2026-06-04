@@ -3,5 +3,5 @@ discogs:
   outputs:
     dev:
       type: duckdb
-      path: /Users/daniel/Desktop/pipeline/discogs.duckdb
+      path: ../discogs.duckdb
       schema: main
