@@ -28,5 +28,8 @@ select
     (raw_data->>'$.community.want')::int                as community_want,
     (raw_data->>'$.community.rating.average')::double   as rating_average,
     (raw_data->>'$.num_for_sale')::int                  as num_for_sale,
+    raw_data->>'$.thumb'                                as thumb_url,
+    raw_data->>'$.uri'                                  as discogs_uri,
+    array_to_string(cast(raw_data->'$.styles' as varchar[]), ', ') as styles,
     _loaded_at
 from source

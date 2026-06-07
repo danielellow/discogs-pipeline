@@ -22,6 +22,9 @@ select
     case when community_have > 0
          then round(community_want * 1.0 / community_have, 2)
     end                                                 as want_to_have_ratio,
+    thumb_url,
+    discogs_uri,
+    styles,
     _loaded_at                                          as source_loaded_at,
     'discogs_api'                                       as source_system
 from staged

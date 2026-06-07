@@ -1,54 +1,42 @@
 """
-Discogs Desire Index — Streamlit front end.
+Grails — a crate-digger's desire index.
 
-Reads LIVE from the DuckDB gold layer (main.fct_release + dimensions) produced by
-dbt. No CSV exports — the app queries the warehouse directly, which is the
-required pattern for the assessment.
+A discovery wall of the most-coveted, least-owned records across four independent
+labels. Reads LIVE from the DuckDB gold layer (main.fct_release + dims) built by
+dbt — no CSV exports.
 
-Run from the `pipeline` folder:
-    streamlit run app.py
+Run from the `pipeline` folder:  streamlit run app.py
 """
 
 import os
+import html
 import duckdb
 import pandas as pd
 import streamlit as st
 
-# --- DB path: resolve next to this file so it works regardless of where you run it ---
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "discogs.duckdb")
 
 LABEL_NAMES = {
-    "felt": "FELT",
-    "motion_ward": "Motion Ward",
-    "year0001": "Year0001",
-    "posh_isolation": "Posh Isolation",
+    "felt": "FELT", "motion_ward": "Motion Ward",
+    "year0001": "Year0001", "posh_isolation": "Posh Isolation",
 }
 
-st.set_page_config(page_title="Discogs Desire Index", page_icon="🎛️", layout="wide")
+st.set_page_config(page_title="Grails - a desire index", page_icon="🖤", layout="wide")
 
 
-# ---------------------------------------------------------------- data access
 @st.cache_data(ttl=300)
 def load_releases() -> pd.DataFrame:
-    """One denormalised row per release, joined across the star schema."""
     con = duckdb.connect(DB_PATH, read_only=True)
     df = con.execute(
         """
         select
-            f.release_id,
-            f.release_title,
-            f.source_label,
-            la.label_name,
-            ar.artist_name,
-            fm.format_name,
-            fm.format_class,
-            d.release_year,
-            f.country,
-            f.community_have      as have,
-            f.community_want      as want,
-            f.num_for_sale,
-            f.rating_average      as rating,
-            f.want_to_have_ratio  as ratio,
+            f.release_id, f.release_title, f.source_label,
+            la.label_name, ar.artist_name,
+            fm.format_name, fm.format_class,
+            d.release_year, f.country,
+            f.thumb_url, f.discogs_uri, f.styles,
+            f.community_have as have, f.community_want as want,
+            f.num_for_sale, f.rating_average as rating, f.want_to_have_ratio as ratio,
             coalesce(g.genres, '') as genres
         from main.fct_release f
         left join main.dim_label  la on f.label_key  = la.label_key
@@ -57,8 +45,7 @@ def load_releases() -> pd.DataFrame:
         left join main.dim_date   d  on f.year_key   = d.year_key
         left join (
             select release_id, string_agg(genre_name, ', ' order by genre_name) as genres
-            from main.bridge_release_genre
-            group by release_id
+            from main.bridge_release_genre group by release_id
         ) g on f.release_id = g.release_id
         """
     ).df()
@@ -68,189 +55,175 @@ def load_releases() -> pd.DataFrame:
 
 @st.cache_data(ttl=300)
 def load_health() -> pd.DataFrame:
-    """Per-label data-health summary (observability panel)."""
     con = duckdb.connect(DB_PATH, read_only=True)
     df = con.execute(
         """
-        select
-            source_label,
-            count(*)                                                   as releases,
-            round(100.0 * count(release_year)      / count(*), 1)      as pct_with_year,
-            round(100.0 * count(case when community_have > 0 then 1 end)
-                        / count(*), 1)                                 as pct_with_demand_data,
-            max(source_loaded_at)                                      as last_loaded
-        from main.fct_release
-        left join main.dim_date using (year_key)
-        group by source_label
-        order by releases desc
+        select source_label,
+               count(*) as releases,
+               round(100.0*count(release_year)/count(*),1) as pct_with_year,
+               round(100.0*count(case when community_have>0 then 1 end)/count(*),1) as pct_with_demand_data,
+               max(source_loaded_at) as last_loaded
+        from main.fct_release left join main.dim_date using (year_key)
+        group by source_label order by releases desc
         """
     ).df()
     con.close()
     return df
 
 
-# ---------------------------------------------------------------- load + guard
+st.markdown(
+    """
+    <style>
+      .concept { color:#8a8a8a; font-size:1.02rem; line-height:1.5; max-width:60rem; }
+      .wall { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr));
+              gap:14px; margin-top:8px; }
+      .card { position:relative; text-decoration:none; color:inherit;
+              border:1px solid #2a2a2a; border-radius:10px; overflow:hidden; background:#161616;
+              transition:transform .12s ease, border-color .12s ease; display:block; }
+      .card:hover { transform:translateY(-3px); border-color:#666; }
+      .cover { width:100%; aspect-ratio:1/1; background:#222 center/cover no-repeat;
+               display:flex; align-items:center; justify-content:center; color:#444; font-size:.7rem; }
+      .badge { position:absolute; top:8px; left:8px; background:#e8482b; color:#fff;
+               font-weight:700; font-size:.74rem; padding:2px 7px; border-radius:20px; }
+      .meta { padding:9px 10px 11px; }
+      .t { font-weight:600; font-size:.86rem; line-height:1.2; margin-bottom:2px;
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .a { color:#bdbdbd; font-size:.8rem; margin-bottom:6px;
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .s { color:#7d7d7d; font-size:.72rem; }
+      .n { color:#9a9a9a; font-size:.72rem; margin-top:4px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 try:
     df = load_releases()
 except Exception as e:
-    st.error(
-        "Couldn't read the warehouse. Make sure you've run `dbt build` and that "
-        f"`discogs.duckdb` sits next to this app.\n\nDetails: {e}"
-    )
+    st.error(f"Couldn't read the warehouse. Run `dbt build` first.\n\nDetails: {e}")
     st.stop()
 
 df["label_pretty"] = df["source_label"].map(LABEL_NAMES).fillna(df["source_label"])
 df["genre_list"] = df["genres"].apply(lambda s: [g.strip() for g in s.split(",") if g.strip()])
 
-# ---------------------------------------------------------------- header
-st.title("🎛️ Discogs Desire Index")
-st.caption(
-    "Desire vs ownership across four independent labels — which records are most "
-    "coveted but least owned. Data flows live from the Discogs API → DuckDB → dbt → here."
+st.title("🖤 Grails")
+st.markdown(
+    f"<div class='concept'>The records the underground <b>craves</b> but almost no one owns. "
+    f"{len(df):,} releases across four independent labels - FELT, Motion Ward, Year0001 and "
+    f"Posh Isolation - each ranked by <b>desire</b>: how many people want it for every one "
+    f"person who has it. Higher = rarer and more coveted.</div>",
+    unsafe_allow_html=True,
 )
+st.write("")
 
-# ---------------------------------------------------------------- sidebar filters
-st.sidebar.header("Filters")
-
+st.sidebar.header("Dig the crates")
 label_opts = sorted(df["label_pretty"].unique())
 sel_labels = st.sidebar.multiselect("Label", label_opts, default=label_opts)
-
 class_opts = sorted(df["format_class"].dropna().unique())
-sel_class = st.sidebar.multiselect("Format type", class_opts, default=class_opts)
-
+sel_class = st.sidebar.multiselect("Format", class_opts, default=class_opts)
 all_genres = sorted({g for lst in df["genre_list"] for g in lst})
 sel_genres = st.sidebar.multiselect("Genre (any of)", all_genres, default=[])
-
 min_owners = st.sidebar.slider(
-    "Minimum owners (have)", 0, 50, 0,
-    help="Raise this to filter out extreme ratios that come from just 1–2 owners.",
+    "Minimum owners", 0, 50, 3,
+    help="Higher = robust grails (real demand). Lower = include extreme 1-2-owner rarities.",
 )
-
 years = df["release_year"].dropna()
+yr = None
 if len(years):
-    y_min, y_max = int(years.min()), int(years.max())
-    yr = st.sidebar.slider("Release year", y_min, y_max, (y_min, y_max))
-else:
-    yr = None
+    y0, y1 = int(years.min()), int(years.max())
+    yr = st.sidebar.slider("Year", y0, y1, (y0, y1))
 
-# ---------------------------------------------------------------- apply filters
 mask = (
     df["label_pretty"].isin(sel_labels)
     & df["format_class"].isin(sel_class)
     & (df["have"].fillna(0) >= min_owners)
+    & (df["ratio"].notna())
 )
 if sel_genres:
     mask &= df["genre_list"].apply(lambda lst: any(g in lst for g in sel_genres))
 if yr is not None:
     mask &= df["release_year"].isna() | df["release_year"].between(yr[0], yr[1])
+fdf = df[mask].copy().sort_values("ratio", ascending=False)
 
-fdf = df[mask].copy()
-
-# ---------------------------------------------------------------- KPI row
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Releases", f"{len(fdf):,}")
+c1.metric("Records in view", f"{len(fdf):,}")
 c2.metric("Total wanting", f"{int(fdf['want'].fillna(0).sum()):,}")
 c3.metric("Total owning", f"{int(fdf['have'].fillna(0).sum()):,}")
-med = fdf.loc[fdf["have"].fillna(0) > 0, "ratio"].median()
-c4.metric("Median want/have", f"{med:.1f}" if pd.notna(med) else "—")
-
+md = fdf["ratio"].median()
+c4.metric("Median desire", f"{md:.1f}x" if pd.notna(md) else "-")
 st.divider()
 
-# ---------------------------------------------------------------- tabs
-tab_browse, tab_wanted, tab_format, tab_label, tab_health = st.tabs(
-    ["📀 Browse", "🔥 Most wanted", "💿 Physical vs digital", "🏷️ By label", "🩺 Data health"]
+tab_wall, tab_top, tab_fmt, tab_lab, tab_health = st.tabs(
+    ["🧱 The wall", "🔥 Top grails", "💿 Physical vs digital", "🏷️ By label", "🩺 Data health"]
 )
 
-with tab_browse:
-    st.subheader("Browse the catalogue")
-    sort_col = st.selectbox(
-        "Sort by", ["want/have ratio", "want", "have", "for sale", "year"], index=0
-    )
-    sort_map = {"want/have ratio": "ratio", "want": "want", "have": "have",
-                "for sale": "num_for_sale", "year": "release_year"}
-    view = fdf.sort_values(sort_map[sort_col], ascending=False, na_position="last")[
-        ["release_title", "artist_name", "label_pretty", "format_name",
-         "release_year", "genres", "have", "want", "ratio", "num_for_sale"]
-    ].rename(columns={
-        "release_title": "Title", "artist_name": "Artist", "label_pretty": "Label",
-        "format_name": "Format", "release_year": "Year", "genres": "Genres",
-        "have": "Have", "want": "Want", "ratio": "Want/Have", "num_for_sale": "For sale",
-    })
-    st.dataframe(view, use_container_width=True, hide_index=True, height=520)
-    st.caption(f"{len(view):,} releases shown.")
-
-with tab_wanted:
-    st.subheader("Most coveted (highest want-to-have ratio)")
-    top = (fdf[fdf["have"].fillna(0) > 0]
-           .sort_values("ratio", ascending=False)
-           .head(15)
-           .assign(label_disp=lambda d: d["release_title"] + " — " + d["label_pretty"]))
-    if len(top):
-        chart_df = top.set_index("label_disp")[["ratio"]].rename(columns={"ratio": "Want/Have"})
-        st.bar_chart(chart_df, horizontal=True, height=480)
-        st.caption(
-            "Tip: raise the *Minimum owners* filter in the sidebar to see robust "
-            "ratios (big numbers) rather than extremes from 1–2 owners."
-        )
+with tab_wall:
+    st.caption("Sorted by desire. Click any sleeve to open it on Discogs.")
+    show = fdf.head(90)
+    if len(show) == 0:
+        st.info("No records match the current filters - loosen them in the sidebar.")
     else:
-        st.info("No releases match the current filters.")
+        cards = []
+        for _, r in show.iterrows():
+            cover = r["thumb_url"] if isinstance(r["thumb_url"], str) and r["thumb_url"] else ""
+            cover_style = f"background-image:url('{html.escape(cover)}')" if cover else ""
+            cover_inner = "" if cover else "no cover"
+            href = r["discogs_uri"] if isinstance(r["discogs_uri"], str) and r["discogs_uri"] else "#"
+            ratio = f"{r['ratio']:.0f}x" if pd.notna(r["ratio"]) else ""
+            title = html.escape(str(r["release_title"] or "Untitled"))
+            artist = html.escape(str(r["artist_name"] or "Unknown"))
+            parts = [r["label_pretty"], r["format_name"],
+                     int(r["release_year"]) if pd.notna(r["release_year"]) else None]
+            sub = html.escape(" · ".join(str(x) for x in parts if x is not None and str(x) != "nan"))
+            want_n = int(r["want"]) if pd.notna(r["want"]) else 0
+            have_n = int(r["have"]) if pd.notna(r["have"]) else 0
+            nums = f"{want_n} want · {have_n} have"
+            cards.append(
+                f"<a class='card' href='{html.escape(href)}' target='_blank'>"
+                f"<div class='badge'>{ratio}</div>"
+                f"<div class='cover' style=\"{cover_style}\">{cover_inner}</div>"
+                f"<div class='meta'><div class='t'>{title}</div><div class='a'>{artist}</div>"
+                f"<div class='s'>{sub}</div><div class='n'>{nums}</div></div></a>"
+            )
+        st.markdown(f"<div class='wall'>{''.join(cards)}</div>", unsafe_allow_html=True)
+        st.caption(f"Showing the top {len(show)} of {len(fdf):,} matching records.")
 
-with tab_format:
+with tab_top:
+    st.subheader("The 15 most-coveted")
+    top = fdf.head(15).assign(lbl=lambda d: d["release_title"] + " - " + d["label_pretty"])
+    if len(top):
+        st.bar_chart(top.set_index("lbl")[["ratio"]].rename(columns={"ratio": "Desire (want/have)"}),
+                     horizontal=True, height=460)
+
+with tab_fmt:
     st.subheader("Physical vs digital")
     g = (fdf.groupby("format_class")
-            .agg(releases=("release_id", "count"),
-                 total_want=("want", "sum"),
-                 avg_ratio=("ratio", "mean"))
-            .reset_index())
+            .agg(records=("release_id", "count"), avg_desire=("ratio", "mean")).reset_index())
     cc1, cc2 = st.columns(2)
-    with cc1:
-        st.bar_chart(g.set_index("format_class")[["releases"]], height=320)
-        st.caption("Number of releases by format type.")
-    with cc2:
-        st.bar_chart(g.set_index("format_class")[["avg_ratio"]], height=320)
-        st.caption("Average want/have ratio by format type.")
-    st.dataframe(g.rename(columns={
-        "format_class": "Format type", "releases": "Releases",
-        "total_want": "Total want", "avg_ratio": "Avg want/have"}),
-        use_container_width=True, hide_index=True)
+    cc1.bar_chart(g.set_index("format_class")[["records"]], height=300)
+    cc2.bar_chart(g.set_index("format_class")[["avg_desire"]], height=300)
+    st.dataframe(g.rename(columns={"format_class": "Format", "records": "Records",
+                                   "avg_desire": "Avg desire"}),
+                 use_container_width=True, hide_index=True)
 
-with tab_label:
-    st.subheader("Per-label comparison")
+with tab_lab:
+    st.subheader("Which label is most coveted?")
     g = (fdf.groupby("label_pretty")
-            .agg(releases=("release_id", "count"),
-                 total_have=("have", "sum"),
-                 total_want=("want", "sum"),
-                 avg_ratio=("ratio", "mean"))
-            .reset_index())
-    st.bar_chart(g.set_index("label_pretty")[["avg_ratio"]], height=320)
-    st.caption("Average want/have ratio by label — which label's catalogue is most coveted.")
-    st.dataframe(g.rename(columns={
-        "label_pretty": "Label", "releases": "Releases", "total_have": "Total have",
-        "total_want": "Total want", "avg_ratio": "Avg want/have"}),
-        use_container_width=True, hide_index=True)
+            .agg(records=("release_id", "count"), avg_desire=("ratio", "mean")).reset_index())
+    st.bar_chart(g.set_index("label_pretty")[["avg_desire"]], height=300)
+    st.dataframe(g.rename(columns={"label_pretty": "Label", "records": "Records",
+                                   "avg_desire": "Avg desire"}),
+                 use_container_width=True, hide_index=True)
 
 with tab_health:
     st.subheader("Pipeline data health")
-    st.caption(
-        "Observability panel: how complete the data is per label, and when it was "
-        "last loaded. Inspired by waxindex's data-health view."
-    )
+    st.caption("How complete the data is per label, and when it last loaded - observability.")
     try:
         h = load_health()
         h["source_label"] = h["source_label"].map(LABEL_NAMES).fillna(h["source_label"])
         st.dataframe(h.rename(columns={
-            "source_label": "Label", "releases": "Releases",
-            "pct_with_year": "% with year", "pct_with_demand_data": "% with demand data",
-            "last_loaded": "Last loaded"}),
+            "source_label": "Label", "releases": "Records", "pct_with_year": "% with year",
+            "pct_with_demand_data": "% with demand data", "last_loaded": "Last loaded"}),
             use_container_width=True, hide_index=True)
     except Exception as e:
         st.warning(f"Couldn't load health summary: {e}")
-
-with st.expander("ℹ️ About this pipeline"):
-    st.markdown(
-        "- **Source:** Discogs API (releases for 4 independent labels)\n"
-        "- **Ingestion:** Python script, rate-limit aware, lands raw JSON\n"
-        "- **Raw / bronze:** `raw.releases_raw` in DuckDB (one row per release, untouched)\n"
-        "- **Transform:** dbt — staging → intermediate → star schema (fact + dims), tested\n"
-        "- **This app:** Streamlit, querying the gold layer live (no CSV export)"
-    )

@@ -12,6 +12,11 @@ select
     release_title,
     source_label,
     country,
+    thumb_url,
+    discogs_uri,
+    styles,
+    -- additive measures
+    community_have,
     -- additive measures
     community_have,
     community_want,
