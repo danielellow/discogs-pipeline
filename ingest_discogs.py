@@ -18,11 +18,11 @@ LABELS = {
     "posh_isolation": 154437,
 }
 
-# Set to a small number (e.g. 5) for a quick TEST run.
-# Set to None for the real, full pull (~20 min).
+# Set to a small number (5) for a quick test run.
+# Set to None for the full pull (aprox 20 min).
 LIMIT_PER_LABEL = None
 
-REQUEST_PAUSE = 1.2   # seconds between calls; keeps us under 60/min
+REQUEST_PAUSE = 1.2   # seconds between calls; keeps under 60/min
 # ------------------
 
 HEADERS = {

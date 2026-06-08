@@ -1,5 +1,5 @@
 -- DIMENSION: artist. One row per artist_id (Discogs sometimes spells the same
--- artist differently across releases, so we collapse to one name per id).
+-- artist differently across releases, so collapse to one name per id).
 -- Includes an "Unknown" member for releases with missing artist data.
 with a as (
     select

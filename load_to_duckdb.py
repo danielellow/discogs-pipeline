@@ -3,7 +3,7 @@ import glob
 import os
 
 # Connect to a DuckDB database file (created if it doesn't exist).
-# This single file IS your warehouse.
+# This single file is the warehouse.
 con = duckdb.connect("discogs.duckdb")
 
 # Bronze layer: a 'raw' schema holding data exactly as it arrived.

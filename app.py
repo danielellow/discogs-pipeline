@@ -1,15 +1,15 @@
 """
-Grails — a crate-digger's desire index.
+Grail Index - want vs. ownership across four independent labels.
 
-A discovery wall of the most-coveted, least-owned records across four independent
-labels. Reads LIVE from the DuckDB gold layer (main.fct_release + dims) built by
-dbt — no CSV exports.
+A browsable index of the most-coveted, least-owned records across four independent
+labels. Reads LIVE from the DuckDB gold layer (main.fct_release + dims) built by dbt.
 
 Run from the `pipeline` folder:  streamlit run app.py
 """
 
 import os
 import html
+import altair as alt
 import duckdb
 import pandas as pd
 import streamlit as st
@@ -21,7 +21,7 @@ LABEL_NAMES = {
     "year0001": "Year0001", "posh_isolation": "Posh Isolation",
 }
 
-st.set_page_config(page_title="Grails - a desire index", page_icon="🖤", layout="wide")
+st.set_page_config(page_title="Grail Index", page_icon="◖", layout="wide")
 
 
 @st.cache_data(ttl=300)
@@ -60,8 +60,8 @@ def load_health() -> pd.DataFrame:
         """
         select source_label,
                count(*) as releases,
-               round(100.0*count(release_year)/count(*),1) as pct_with_year,
-               round(100.0*count(case when community_have>0 then 1 end)/count(*),1) as pct_with_demand_data,
+               round(100.0*count(release_year)/count(*),0) as pct_year,
+               round(100.0*count(case when community_have>0 then 1 end)/count(*),0) as pct_demand,
                max(source_loaded_at) as last_loaded
         from main.fct_release left join main.dim_date using (year_key)
         group by source_label order by releases desc
@@ -74,24 +74,31 @@ def load_health() -> pd.DataFrame:
 st.markdown(
     """
     <style>
-      .concept { color:#8a8a8a; font-size:1.02rem; line-height:1.5; max-width:60rem; }
+      .concept { color:#5b5347; font-size:.92rem; line-height:1.6; max-width:58rem; }
+      .stat { color:#1f1b16; font-size:.8rem; letter-spacing:.04em; margin-top:.4rem; }
+      .stat b { color:#b1442f; }
       .wall { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr));
-              gap:14px; margin-top:8px; }
-      .card { position:relative; text-decoration:none; color:inherit;
-              border:1px solid #2a2a2a; border-radius:10px; overflow:hidden; background:#161616;
-              transition:transform .12s ease, border-color .12s ease; display:block; }
-      .card:hover { transform:translateY(-3px); border-color:#666; }
-      .cover { width:100%; aspect-ratio:1/1; background:#222 center/cover no-repeat;
-               display:flex; align-items:center; justify-content:center; color:#444; font-size:.7rem; }
-      .badge { position:absolute; top:8px; left:8px; background:#e8482b; color:#fff;
-               font-weight:700; font-size:.74rem; padding:2px 7px; border-radius:20px; }
-      .meta { padding:9px 10px 11px; }
-      .t { font-weight:600; font-size:.86rem; line-height:1.2; margin-bottom:2px;
+              gap:12px; margin-top:6px; }
+      .card { position:relative; text-decoration:none; color:inherit; display:block;
+              background:#f6efe1; border:1px solid #d8cdb6; border-radius:3px; overflow:hidden;
+              transition:border-color .12s ease, transform .12s ease; }
+      .card:hover { border-color:#1f1b16; transform:translateY(-2px); }
+      .cover { width:100%; aspect-ratio:1/1; background:#e7dcc6 center/cover no-repeat;
+               display:flex; align-items:center; justify-content:center;
+               color:#a89c82; font-size:.6rem; text-transform:uppercase; letter-spacing:.12em; }
+      .badge { position:absolute; top:7px; left:7px; background:#b1442f; color:#f6efe1;
+               font-weight:700; font-size:.7rem; padding:2px 6px; border-radius:2px; letter-spacing:.02em; }
+      .meta { padding:8px 9px 10px; }
+      .t { font-weight:700; font-size:.78rem; line-height:1.2; margin-bottom:2px; color:#1f1b16;
            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .a { color:#bdbdbd; font-size:.8rem; margin-bottom:6px;
+      .a { color:#6b6353; font-size:.72rem; margin-bottom:6px;
            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .s { color:#7d7d7d; font-size:.72rem; }
-      .n { color:#9a9a9a; font-size:.72rem; margin-top:4px; }
+      .s { color:#8a7f68; font-size:.66rem; letter-spacing:.03em; }
+      .n { color:#9a8e72; font-size:.66rem; margin-top:3px; }
+      .readout { background:#f6efe1; border:1px solid #d8cdb6; border-radius:3px;
+                 padding:14px 16px; font-size:.78rem; line-height:1.9; color:#1f1b16; }
+      .readout .dim { color:#8a7f68; }
+      .readout .hd { color:#b1442f; letter-spacing:.04em; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -100,23 +107,28 @@ st.markdown(
 try:
     df = load_releases()
 except Exception as e:
-    st.error(f"Couldn't read the warehouse. Run `dbt build` first.\n\nDetails: {e}")
+    st.error(f"Couldn't read the warehouse - run `dbt build` first.\n\n{e}")
     st.stop()
 
 df["label_pretty"] = df["source_label"].map(LABEL_NAMES).fillna(df["source_label"])
 df["genre_list"] = df["genres"].apply(lambda s: [g.strip() for g in s.split(",") if g.strip()])
 
-st.title("🖤 Grails")
+st.title("◖ Grail Index")
 st.markdown(
-    f"<div class='concept'>The records the underground <b>craves</b> but almost no one owns. "
-    f"{len(df):,} releases across four independent labels - FELT, Motion Ward, Year0001 and "
-    f"Posh Isolation - each ranked by <b>desire</b>: how many people want it for every one "
-    f"person who has it. Higher = rarer and more coveted.</div>",
+    "<div class='concept'>A desire index for four independent labels - "
+    "FELT, Motion Ward, Year0001, Posh Isolation. Every record ranked by "
+    "<b>desire</b>: how many people want it for each one that owns it. "
+    "Higher = rarer, more coveted.</div>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"<div class='stat'><b>{len(df):,}</b> releases · <b>4</b> labels · ranked by desire · "
+    f"live from the warehouse</div>",
     unsafe_allow_html=True,
 )
 st.write("")
 
-st.sidebar.header("Dig the crates")
+st.sidebar.header("Filter")
 label_opts = sorted(df["label_pretty"].unique())
 sel_labels = st.sidebar.multiselect("Label", label_opts, default=label_opts)
 class_opts = sorted(df["format_class"].dropna().unique())
@@ -124,8 +136,8 @@ sel_class = st.sidebar.multiselect("Format", class_opts, default=class_opts)
 all_genres = sorted({g for lst in df["genre_list"] for g in lst})
 sel_genres = st.sidebar.multiselect("Genre (any of)", all_genres, default=[])
 min_owners = st.sidebar.slider(
-    "Minimum owners", 0, 50, 3,
-    help="Higher = robust grails (real demand). Lower = include extreme 1-2-owner rarities.",
+    "Min Owners", 0, 50, 3,
+    help="Higher = robust grails. Lower = include extreme 1-2-owner rarities.",
 )
 years = df["release_year"].dropna()
 yr = None
@@ -146,22 +158,22 @@ if yr is not None:
 fdf = df[mask].copy().sort_values("ratio", ascending=False)
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Records in view", f"{len(fdf):,}")
-c2.metric("Total wanting", f"{int(fdf['want'].fillna(0).sum()):,}")
-c3.metric("Total owning", f"{int(fdf['have'].fillna(0).sum()):,}")
+c1.metric("In View", f"{len(fdf):,}")
+c2.metric("Wanting", f"{int(fdf['want'].fillna(0).sum()):,}")
+c3.metric("Owning", f"{int(fdf['have'].fillna(0).sum()):,}")
 md = fdf["ratio"].median()
-c4.metric("Median desire", f"{md:.1f}x" if pd.notna(md) else "-")
+c4.metric("Median Desire", f"{md:.1f}x" if pd.notna(md) else "-")
 st.divider()
 
-tab_wall, tab_top, tab_fmt, tab_lab, tab_health = st.tabs(
-    ["🧱 The wall", "🔥 Top grails", "💿 Physical vs digital", "🏷️ By label", "🩺 Data health"]
+tab_wall, tab_scatter, tab_fmt, tab_lab, tab_health = st.tabs(
+    ["The Wall", "Want vs Have", "Physical · Digital", "By Label", "Data Health"]
 )
 
 with tab_wall:
-    st.caption("Sorted by desire. Click any sleeve to open it on Discogs.")
+    st.caption("Sorted by desire · click any sleeve to open it on Discogs")
     show = fdf.head(90)
     if len(show) == 0:
-        st.info("No records match the current filters - loosen them in the sidebar.")
+        st.info("Nothing matches - loosen the filters.")
     else:
         cards = []
         for _, r in show.iterrows():
@@ -186,44 +198,82 @@ with tab_wall:
                 f"<div class='s'>{sub}</div><div class='n'>{nums}</div></div></a>"
             )
         st.markdown(f"<div class='wall'>{''.join(cards)}</div>", unsafe_allow_html=True)
-        st.caption(f"Showing the top {len(show)} of {len(fdf):,} matching records.")
+        st.caption(f"Showing top {len(show)} of {len(fdf):,} matching records")
 
-with tab_top:
-    st.subheader("The 15 most-coveted")
-    top = fdf.head(15).assign(lbl=lambda d: d["release_title"] + " - " + d["label_pretty"])
-    if len(top):
-        st.bar_chart(top.set_index("lbl")[["ratio"]].rename(columns={"ratio": "Desire (want/have)"}),
-                     horizontal=True, height=460)
+with tab_scatter:
+    st.subheader("Want vs Have")
+    st.caption("Each dot is a release. Dots above the dashed parity line are wanted more "
+               "than owned - the further above, the bigger the grail.")
+    sc = fdf[(fdf["have"].fillna(0) > 0) & (fdf["want"].fillna(0) > 0)].copy()
+    if len(sc):
+        lo = max(1, int(min(sc["have"].min(), sc["want"].min())))
+        hi = int(max(sc["have"].max(), sc["want"].max()))
+        dots = alt.Chart(sc).mark_circle(size=55, opacity=0.55).encode(
+            x=alt.X("have:Q", scale=alt.Scale(type="log"), title="Owners (have)"),
+            y=alt.Y("want:Q", scale=alt.Scale(type="log"), title="Wanters (want)"),
+            color=alt.Color("format_class:N", title="Format",
+                            scale=alt.Scale(scheme="set2")),
+            tooltip=[alt.Tooltip("release_title:N", title="Release"),
+                     alt.Tooltip("artist_name:N", title="Artist"),
+                     alt.Tooltip("label_pretty:N", title="Label"),
+                     "want:Q", "have:Q", alt.Tooltip("ratio:Q", title="Desire", format=".1f")],
+        )
+        parity = alt.Chart(pd.DataFrame({"have": [lo, hi], "want": [lo, hi]})).mark_line(
+            strokeDash=[4, 4], color="#8a7f68").encode(x="have:Q", y="want:Q")
+        chart = (dots + parity).properties(height=470).configure_view(
+            strokeWidth=0).configure(background="transparent").interactive()
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("Nothing to plot - loosen the filters.")
 
 with tab_fmt:
-    st.subheader("Physical vs digital")
+    st.subheader("Physical vs Digital")
+    st.caption("Pooled desire = total wanters / total owners in the group (robust to outliers). "
+               "n = number of records.")
     g = (fdf.groupby("format_class")
-            .agg(records=("release_id", "count"), avg_desire=("ratio", "mean")).reset_index())
+            .agg(n=("release_id", "count"), want=("want", "sum"), have=("have", "sum")).reset_index())
+    g["pooled_desire"] = (g["want"] / g["have"].replace(0, pd.NA)).round(2)
     cc1, cc2 = st.columns(2)
-    cc1.bar_chart(g.set_index("format_class")[["records"]], height=300)
-    cc2.bar_chart(g.set_index("format_class")[["avg_desire"]], height=300)
-    st.dataframe(g.rename(columns={"format_class": "Format", "records": "Records",
-                                   "avg_desire": "Avg desire"}),
+    cc1.bar_chart(g.set_index("format_class")[["pooled_desire"]], height=300)
+    cc2.bar_chart(g.set_index("format_class")[["n"]], height=300)
+    st.dataframe(g.rename(columns={"format_class": "Format", "n": "Records (n)",
+                                   "pooled_desire": "Pooled Desire", "want": "Total Want",
+                                   "have": "Total Have"}),
                  use_container_width=True, hide_index=True)
 
 with tab_lab:
-    st.subheader("Which label is most coveted?")
+    st.subheader("Most Coveted Label")
+    st.caption("Pooled desire = total wanters / total owners (robust to outliers). "
+               "n shown because labels are very uneven in size.")
     g = (fdf.groupby("label_pretty")
-            .agg(records=("release_id", "count"), avg_desire=("ratio", "mean")).reset_index())
-    st.bar_chart(g.set_index("label_pretty")[["avg_desire"]], height=300)
-    st.dataframe(g.rename(columns={"label_pretty": "Label", "records": "Records",
-                                   "avg_desire": "Avg desire"}),
+            .agg(n=("release_id", "count"), want=("want", "sum"), have=("have", "sum")).reset_index())
+    g["pooled_desire"] = (g["want"] / g["have"].replace(0, pd.NA)).round(2)
+    g = g.sort_values("pooled_desire", ascending=False)
+    st.bar_chart(g.set_index("label_pretty")[["pooled_desire"]], height=300)
+    st.dataframe(g.rename(columns={"label_pretty": "Label", "n": "Records (n)",
+                                   "pooled_desire": "Pooled Desire", "want": "Total Want",
+                                   "have": "Total Have"}),
                  use_container_width=True, hide_index=True)
 
 with tab_health:
-    st.subheader("Pipeline data health")
-    st.caption("How complete the data is per label, and when it last loaded - observability.")
+    st.subheader("Data Health")
+    st.caption("Completeness per label and when each last loaded - pipeline observability")
     try:
         h = load_health()
-        h["source_label"] = h["source_label"].map(LABEL_NAMES).fillna(h["source_label"])
-        st.dataframe(h.rename(columns={
-            "source_label": "Label", "releases": "Records", "pct_with_year": "% with year",
-            "pct_with_demand_data": "% with demand data", "last_loaded": "Last loaded"}),
-            use_container_width=True, hide_index=True)
+        total = int(h["releases"].sum())
+        snap = pd.to_datetime(h["last_loaded"]).max()
+        snap_s = snap.strftime("%Y-%m-%d %H:%M UTC") if pd.notna(snap) else "-"
+        lines = [f"<span class='hd'>snap {snap_s} · {total:,} rels · {len(h)} labels</span>", ""]
+        for _, r in h.iterrows():
+            name = LABEL_NAMES.get(r["source_label"], r["source_label"])
+            loaded = pd.to_datetime(r["last_loaded"])
+            loaded_s = loaded.strftime("%Y-%m-%d") if pd.notna(loaded) else "-"
+            lines.append(
+                f"{name:<16} {int(r['releases']):>4} rels   "
+                f"y {int(r['pct_year'])}%   d {int(r['pct_demand'])}%   "
+                f"<span class='dim'>loaded {loaded_s}</span>"
+            )
+        st.markdown("<div class='readout'>" + "<br>".join(lines) + "</div>", unsafe_allow_html=True)
+        st.caption("y = % with a release year · d = % with want/have demand data")
     except Exception as e:
         st.warning(f"Couldn't load health summary: {e}")

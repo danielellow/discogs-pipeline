@@ -1,7 +1,7 @@
 -- STAGING (bronze->silver edge): flatten the JSON, type + rename.
--- Deduplication happens HERE at the source: Discogs returns some releases more
--- than once, so we keep one row per release id (most recently loaded) BEFORE
--- extracting fields. (Doing it pre-extraction keeps the window simple/robust.)
+-- Deduplication happens here at the source: Discogs returns some releases more
+-- than once, so keeping one row per release id (most recently loaded) before
+-- extracting fields. (Doing it pre-extraction keeps the window simple)
 with source as (
     select *
     from {{ source('raw', 'releases_raw') }}
