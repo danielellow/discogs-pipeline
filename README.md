@@ -74,8 +74,4 @@ cd .. && streamlit run app.py                  # explore the desire index
 └── (gitignored: .env, discogs.duckdb, raw/)
 ```
 
-## Design decisions
 
-The deliberate trade-offs behind this build: DuckDB vs Snowflake, the API vs bulk dumps,
-GitHub Actions vs Airflow, the data-modelling choices, and the scalability/governance
-reasoning, are included in [`decision_log.md`](decision_log.md).
