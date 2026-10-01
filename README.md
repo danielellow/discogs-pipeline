@@ -15,6 +15,8 @@ owned by few is genuinely hard to find, whatever it currently sells for.
 Built for course 7: Data Engineering, at Hyper Island's Data Analyst Program (DA27) by Daniel Ellow
 ## Pipeline flow
 
+![The desire index in Streamlit](Grail_index_streamlit.png)
+
 ```
 Discogs API
    │   ingest_discogs.py   (Python: paginated, rate-limit aware, resilient to errors)
@@ -55,6 +57,32 @@ Streamlit app          a browsable "wall" of releases, querying the gold layer l
 - **Documentation & tests:** `discogs_dbt/models/marts/_marts.yml` — table/column
   descriptions plus `unique`, `not_null` and `relationships` tests (22 models + tests pass).
 
+## Design decisions
+
+Fuller reasoning, including the alternatives considered, is in [`decision_log.md`](decision_log.md).
+
+**DuckDB instead of a cloud warehouse.** The dataset fits comfortably on one machine, and
+DuckDB removes the cost, credentials and cross-cloud setup a hosted warehouse would need.
+Because the transformations are written in dbt, moving to Snowflake or BigQuery later means
+changing the connection profile rather than rewriting the models.
+
+**GitHub Actions instead of Airflow.** One sequential job on a daily schedule doesn't justify
+running an orchestrator. Actions needs no infrastructure and is already attached to the
+repository. The tradeoff is best-effort timing: scheduled runs can start late when GitHub is
+busy, which doesn't matter for a daily refresh.
+
+**The live API instead of Discogs' bulk data dumps.** The dumps are easier to process but are
+published monthly, so want and have counts would always lag. Calling the API keeps the numbers
+current; the cost is rate limiting, which the ingestion script paces its requests around.
+
+**One sequential job rather than decoupled ingestion and transformation.** At this scale,
+splitting them would add failure modes without buying anything. If the catalogue grew or more
+labels were added, decoupling would be the first change to make.
+
+**Immutable, date-partitioned raw files.** Ingestion never overwrites: each run writes to its
+own `ingest_date=` partition. That makes the bronze layer replayable, so a transformation bug
+can be fixed and rebuilt without going back to the API.
+
 ## Running it locally
 
 ```bash
@@ -66,6 +94,11 @@ python load_to_duckdb.py                       # load raw JSON → DuckDB bronze
 cd discogs_dbt && dbt build --profiles-dir .   # transform + test → star schema
 cd .. && streamlit run app.py                  # explore the desire index
 ```
+
+You'll need a free Discogs account to generate a personal access token.
+
+Two helper scripts sit alongside the pipeline: `scout_labels.py` for finding label IDs on
+Discogs, and `test_discogs.py` for checking that the API connection and token work.
 
 ## Repository structure
 
@@ -79,5 +112,14 @@ cd .. && streamlit run app.py                  # explore the desire index
 ├── decision_log.md            # design decisions & trade-offs
 └── (gitignored: .env, discogs.duckdb, raw/)
 ```
+## Limitations and what's next
 
+- The want-to-have ratio measures scarcity relative to demand, not price. A high ratio means a
+  record is hard to find, not that it sells for a lot.
+- The four labels were chosen by interest rather than sampled, so the index describes these
+  catalogues and doesn't generalise to the wider market.
+- Deduplication matches on release metadata, which misses some reissues and regional variants.
+- Want and have counts are a snapshot at ingestion time. Tracking how the ratio moves would say
+  more than its current value does.
+- Next steps: more labels, a time series of the ratio, and a comparison against marketplace prices.
 
