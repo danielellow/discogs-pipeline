@@ -3,10 +3,16 @@
 An end-to-end data pipeline that pulls release data from the Discogs API for four
 independent record labels, transforms it into a tested star schema, and visualises a
 **"desire index"** — which records are most wanted relative to how few people actually
-own them (the want-to-have ratio), divded by format, genre, label and year.
+own them (the want-to-have ratio), divided by format, genre, label and year.
+
+For every release, Discogs records how many collectors want it and how many own it. The
+ratio between the two says something price alone doesn't: a record wanted by many and
+owned by few is genuinely hard to find, whatever it currently sells for.
+
+**Labels covered:** FELT, Motion Ward, Year0001, Posh Isolation
+**Scale:** ~1,060 releases ingested, 857 after deduplication
 
 Built for course 7: Data Engineering, at Hyper Island's Data Analyst Program (DA27) by Daniel Ellow
-
 ## Pipeline flow
 
 ```
